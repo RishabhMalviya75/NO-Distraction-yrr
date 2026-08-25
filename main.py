@@ -113,6 +113,25 @@ def draw_debug_overlay(frame, active_state: str, ear_avg: float, yaw: float, pit
         cv2.putText(frame, "Keys: [q] Quit  [c] Toggle Stats Panel", (20, 275), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
 
 
+class LandmarksWrapper:
+    def __init__(self, landmark_list):
+        self.landmark = landmark_list
+
+
+def ensure_task_models():
+    """Download MediaPipe task models if not already present."""
+    models = {
+        "face_landmarker.task": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+    }
+    import urllib.request
+    for filename, url in models.items():
+        if not os.path.exists(filename):
+            logging.info(f"Downloading {filename}...")
+            urllib.request.urlretrieve(url, filename)
+            logging.info(f"Downloaded {filename}.")
+
+
 def main():
     config = load_config("config.json")
 
@@ -125,31 +144,41 @@ def main():
         conf_threshold=config.get("phone_confidence_threshold", 0.4)
     )
 
-    # Initialize MediaPipe FaceMesh & Hands
-    mp_face_mesh = mp.solutions.face_mesh
-    face_mesh = mp_face_mesh.FaceMesh(
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    )
+    # Initialize MediaPipe Tasks (FaceLandmarker & HandLandmarker)
+    ensure_task_models()
+    from mediapipe.tasks import python as mp_python
+    from mediapipe.tasks.python import vision
 
-    mp_hands = mp.solutions.hands
-    hands_detector = mp_hands.Hands(
-        max_num_hands=2,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
+    base_face = mp_python.BaseOptions(model_asset_path='face_landmarker.task')
+    options_face = vision.FaceLandmarkerOptions(
+        base_options=base_face,
+        running_mode=vision.RunningMode.IMAGE,
+        num_faces=1
     )
+    face_landmarker = vision.FaceLandmarker.create_from_options(options_face)
 
-    # Attempt to open camera (index 0, then index 1)
+    base_hand = mp_python.BaseOptions(model_asset_path='hand_landmarker.task')
+    options_hand = vision.HandLandmarkerOptions(
+        base_options=base_hand,
+        running_mode=vision.RunningMode.IMAGE,
+        num_hands=2
+    )
+    hand_landmarker = vision.HandLandmarker.create_from_options(options_hand)
+
+    # Attempt to open camera across indices and backend APIs
     cap = None
-    for cam_idx in [0, 1]:
-        temp_cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW) if sys.platform.startswith('win') else cv2.VideoCapture(cam_idx)
-        if temp_cap.isOpened():
-            cap = temp_cap
-            logging.info(f"Opened webcam at index {cam_idx}.")
+    for cam_idx in [0, 1, 2, 3, -1]:
+        for api in ([cv2.CAP_ANY, cv2.CAP_DSHOW, cv2.CAP_MSMF] if sys.platform.startswith('win') else [cv2.CAP_ANY]):
+            temp_cap = cv2.VideoCapture(cam_idx, api)
+            if temp_cap.isOpened():
+                ret, test_frame = temp_cap.read()
+                if ret and test_frame is not None:
+                    cap = temp_cap
+                    logging.info(f"Opened webcam at index {cam_idx} (API: {api}).")
+                    break
+                temp_cap.release()
+        if cap is not None:
             break
-        temp_cap.release()
 
     if cap is None or not cap.isOpened():
         logging.error("No accessible webcam found! Please ensure your webcam is connected.")
@@ -185,15 +214,17 @@ def main():
             h, w = frame.shape[:2]
 
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            face_results = face_mesh.process(rgb_frame)
-            hand_results = hands_detector.process(rgb_frame)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+
+            face_results = face_landmarker.detect(mp_image)
+            hand_results = hand_landmarker.detect(mp_image)
 
             ear_avg, yaw, pitch = 0.0, 0.0, 0.0
             face_detected = False
             face_box = None
 
-            if face_results.multi_face_landmarks:
-                face_landmarks = face_results.multi_face_landmarks[0]
+            if face_results.face_landmarks:
+                face_landmarks = LandmarksWrapper(face_results.face_landmarks[0])
                 face_detected = True
 
                 ear_avg, ear_l, ear_r = calculate_ear(face_landmarks, w, h)
@@ -203,12 +234,14 @@ def main():
                 ys = [lm.y * h for lm in face_landmarks.landmark]
                 face_box = (int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys)))
 
+            hand_landmarks_list = [LandmarksWrapper(h) for h in hand_results.hand_landmarks] if hand_results.hand_landmarks else []
+
             # Detect joined hands (praying / Namaste gesture)
-            hands_joined_flag = detect_hands_joined(hand_results.multi_hand_landmarks)
+            hands_joined_flag = detect_hands_joined(hand_landmarks_list)
 
             # Run Phone Detection
             phone_detected, phone_boxes = phone_detector.detect(
-                frame, face_box=face_box, hand_landmarks_list=hand_results.multi_hand_landmarks
+                frame, face_box=face_box, hand_landmarks_list=hand_landmarks_list
             )
 
             # Update State Machine
@@ -255,8 +288,8 @@ def main():
         cap.release()
         cv2.destroyAllWindows()
         player.stop()
-        face_mesh.close()
-        hands_detector.close()
+        face_landmarker.close()
+        hand_landmarker.close()
         logging.info("Cleanup complete. Application exited.")
 
 
