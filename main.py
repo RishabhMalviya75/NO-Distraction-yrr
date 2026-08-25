@@ -99,7 +99,7 @@ def draw_debug_overlay(frame, active_state: str, ear_avg: float, yaw: float, pit
         cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (100, 100, 100), 1)
         fill_w = int(bar_w * progress)
         fill_color = (0, 0, 255) if progress >= 1.0 else (0, 255, 255)
-        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + fill_w, bar_y + fill_h), fill_color, -1)
+        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + fill_w, bar_y + bar_h), fill_color, -1)
         cv2.putText(frame, f"{eyes_closed_count}/{eyes_closed_max} frames", (bar_x + bar_w + 10, bar_y + 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
 
