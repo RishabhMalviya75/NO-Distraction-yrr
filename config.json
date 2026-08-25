@@ -1,0 +1,17 @@
+{
+  "activities": {
+    "eyes_closed": "media/close_eye.mpeg",
+    "hands_joined": "media/joinhand.mpeg",
+    "phone_detected": "media/phone.mpeg",
+    "distracted": null,
+    "focused_on_book": null,
+    "idle": null
+  },
+  "ear_threshold": 0.21,
+  "eyes_closed_frame_threshold": 15,
+  "state_debounce_seconds": 1.5,
+  "yaw_distracted_threshold": 25.0,
+  "pitch_focused_book_threshold": 15.0,
+  "phone_confidence_threshold": 0.4,
+  "use_yolo_phone": true
+}
