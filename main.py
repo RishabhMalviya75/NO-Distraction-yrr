@@ -23,9 +23,9 @@ def load_config(config_path: str = "config.json") -> dict:
             "eyes_closed": "media/close_eye.mpeg",
             "hands_joined": "media/joinhand.mpeg",
             "phone_detected": "media/phone.mpeg",
-            "distracted": null,
-            "focused_on_book": null,
-            "idle": null
+            "distracted": None,
+            "focused_on_book": None,
+            "idle": None
         },
         "ear_threshold": 0.21,
         "eyes_closed_frame_threshold": 15,
